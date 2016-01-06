@@ -22,7 +22,6 @@ def connect_to_redis():
 
 def parse_request(path_info):
     """Parse PATH_INFO from environment and return valided short URL."""
-    path_info = path_info[1:]
     if not REQUEST_RE.match(path_info):
         raise ValueError
     return path_info.lower()
@@ -36,8 +35,12 @@ def return404(start_response):
 
 def return_redirct(start_response, long_path):
     """Return 301 REDIRECT response with found location."""
+
+    #resp = parse.quote(parse.unquote(long_path.decode('utf-8')))
+    resp = long_path.decode('utf-8')
     start_response('301 Redirect',
-                   [('Location', long_path.decode('ascii')), NO_CACHE])
+                   [('Location', resp),
+                    NO_CACHE])
     return []
 
 
@@ -52,11 +55,15 @@ def application(environ, start_response):
     """Main WSGI application."""
     try:
         rd_con = connect_to_redis()
-        path = parse_request(environ['PATH_INFO'])
+        path_info = environ['PATH_INFO'][1:].rstrip('/')
+        if not path_info:
+            return return404
+        path = parse_request(path_info)
         long_url = rd_con.get(path)
         if not long_url:
             return return404(start_response)
         return return_redirct(start_response, long_url)
-    except Exception:
+    except KeyError as e:
+        print(e)
         return return500(start_response)
 
