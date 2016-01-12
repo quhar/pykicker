@@ -11,7 +11,7 @@ REDIS_HOST = "localhost"
 REDIS_PORT = 6379
 REDIS_DB = 0
 
-REQUEST_RE = re.compile(r'^[a-zA-Z0-9\-_.]+$')
+REQUEST_RE = re.compile(r'^[a-zA-Z0-9\-_./]+$')
 NO_CACHE = ('cache-control', 'no-cache, no-store, max-age=0, must-revalidate')
 
 def connect_to_redis():
@@ -22,9 +22,9 @@ def connect_to_redis():
 
 def parse_request(path_info):
     """Parse PATH_INFO from environment and return valided short URL."""
-    if not REQUEST_RE.match(path_info):
-        raise ValueError
-    return path_info.lower()
+    if '/' in path_info:
+        return path_info.lower().split('/', 1)
+    return path_info.lower(), None
 
 
 def return404(start_response):
@@ -36,7 +36,6 @@ def return404(start_response):
 def return_redirct(start_response, long_path):
     """Return 301 REDIRECT response with found location."""
 
-    #resp = parse.quote(parse.unquote(long_path.decode('utf-8')))
     resp = long_path.decode('utf-8')
     start_response('301 Redirect',
                    [('Location', resp),
@@ -57,13 +56,16 @@ def application(environ, start_response):
         rd_con = connect_to_redis()
         path_info = environ['PATH_INFO'][1:].rstrip('/')
         if not path_info:
-            return return404
-        path = parse_request(path_info)
+            return return404(start_response)
+        path, request_uri = parse_request(path_info)
         long_url = rd_con.get(path)
         if not long_url:
             return return404(start_response)
+        if request_uri:
+            if not str(long_url).endswith('/'):
+                request_uri = '/' + request_uri
+            long_url += request_uri.encode('utf-8')
         return return_redirct(start_response, long_url)
-    except KeyError as e:
-        print(e)
+    except (KeyError, redis.exceptions.RedisError) as e:
         return return500(start_response)
 
